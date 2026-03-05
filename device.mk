@@ -35,3 +35,7 @@ PRODUCT_EXTRA_RECOVERY_KEYS += \
 # Soong namespaces
 PRODUCT_SOONG_NAMESPACES += \
     $(DEVICE_PATH)
+
+# 这一行是万能钥匙，会自动递归拷贝 root 下的所有子目录到 ramdisk
+PRODUCT_COPY_FILES += \
+    $(call find-copy-subdir-files,*,$(DEVICE_PATH)/recovery/root,recovery/root)

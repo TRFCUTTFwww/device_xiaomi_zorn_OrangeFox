@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 //
-
+/*
 bootstrap_go_package {
     name: "soong-libinit_zorn_defaults",
     pkgPath: "device/xiaomi/zorn/libinit/init_zorn",
@@ -21,7 +21,7 @@ bootstrap_go_package {
 libinit_zorn_defaults {
     name: "libinit_zorn_defaults"
 }
-
+*/
 cc_library_static {
     name: "libinit_zorn",
     defaults: [

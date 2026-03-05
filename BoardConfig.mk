@@ -32,9 +32,9 @@ TARGET_2ND_CPU_VARIANT_RUNTIME := $(TARGET_CPU_VARIANT_RUNTIME)
 TARGET_OTA_ASSERT_DEVICE := $(PRODUCT_RELEASE_NAME)
 
 # API
-BOARD_SHIPPING_API_LEVEL := 31
-PRODUCT_SHIPPING_API_LEVEL := 31
-PRODUCT_TARGET_VNDK_VERSION := 33
+BOARD_SHIPPING_API_LEVEL := 35
+#PRODUCT_SHIPPING_API_LEVEL := 31
+#PRODUCT_TARGET_VNDK_VERSION := 33
 
 # Power
 ENABLE_CPUSETS := true
@@ -200,3 +200,54 @@ TW_LOAD_VENDOR_MODULES := "adsp_loader_dlkm.ko aw882xx_dlkm.ko focaltech_touch.k
 TW_CUSTOM_CPU_TEMP_PATH := "/sys/class/thermal/thermal_zone25/temp" # CPU-0-0-0
 TW_BACKUP_EXCLUSIONS := /data/fonts,/data/adb/ap,/data/adb/ksu
 TW_DEVICE_VERSION := $(TW_RELEASE_PRODUCT_NAME)-A15
+
+# --- OrangeFox Specific ---
+FOX_BUILD_TYPE := Unofficial
+OF_MAINTAINER := Shirasu Azusa
+FOX_REPLACE_TOOLBOX := 1
+FOX_USE_SED_BINARY := 1
+FOX_USE_TAR_BINARY := 1
+FOX_USE_ZIP_BINARY := 1
+FOX_USE_NANO_EDITOR := 1
+FOX_ASH_IS_BASH := 1
+# 核心解密增强
+FOX_USE_SPECIFIC_GUI_RESOURCES := 1
+FOX_ENABLE_APP_MANAGER := 1
+BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive
+# 开启 Weaver 支持 (核心中的核心)
+TW_INCLUDE_WEAVER := true
+TW_INCLUDE_CRYPTO_AIDL := true
+# 建议补充，确保 AIDL 解密逻辑完整
+TW_INCLUDE_CRYPTO_AIDL_EXT := true
+# 强制开启 VINTF 校验，防止之前的清单冲突再次导致 Abort
+PRODUCT_ENFORCE_VINTF_MANIFEST := true
+# 很多 A14 机器需要这个来允许 Recovery 访问 AIDL 服务
+TW_RP_AIDL_WEAVER := true
+TW_LOAD_VENDOR_MODULES := "adsp_loader_dlkm.ko aw882xx_dlkm.ko focaltech_touch.ko nxp-nci.ko stm_st54se_gpio.ko stm_nfc_i2c.ko"
+# 建议在上面这一行尝试加入可能缺失的 I2C/SPI 驱动，因为 Weaver 硬件通常挂在 I2C 上
+
+# 重点：很多 A14 机器解密慢或者失败是因为找不到 Gatekeeper
+# 开启这个可以尝试从 System 动态查找解密库
+FOX_REPLACE_BUSYBOX_UNTAR := 1
+# 告诉脚本这是一个 OrangeFox 编译，强制集成资源
+FOX_R11 := 1
+FOX_BUILD_DEVICE := zorn
+
+# 针对 A14 的特殊路径修复（如果脚本找不到资源）
+TARGET_RECOVERY_GUI_DIR := bootable/recovery/gui
+# 重点：告诉橙狐你的 Recovery 到底在哪
+OF_DEVICE_RECOVERY_PATHS := /dev/block/by-name/recovery
+BOARD_USES_RECOVERY_AS_BOOT := false
+
+# 针对 A/B 设备的补丁
+FOX_AB_DEVICE := 1
+FOX_VIRTUAL_AB := 1
+FOX_VIRTUAL_AB_COMPRESSION := 1
+
+# 自动处理一些 A14 的权限碎事
+ALLOW_MISSING_DEPENDENCIES := true
+BUILD_BROKEN_ELF_PREBUILT_PRODUCT_COPY_FILES := true
+
+# 如果你想让 Recovery 里的字体在大屏幕上看起来更舒服
+TW_THEME := portrait_hdpi
+# --- End of OrangeFox ---

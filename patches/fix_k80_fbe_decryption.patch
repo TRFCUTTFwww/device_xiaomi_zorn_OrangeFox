@@ -1,0 +1,362 @@
+diff --git a/Android.bp b/Android.bp
+index fa26d47..0291665 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -146,7 +146,7 @@ cc_library_static {
+         "VoldNativeServiceValidation.cpp",
+         "VoldUtil.cpp",
+         "VolumeManager.cpp",
+-        "Weaver1.cpp",
++        "Weaver.cpp",
+         "fs/Exfat.cpp",
+         "fs/Ext4.cpp",
+         "fs/F2fs.cpp",
+@@ -174,6 +174,8 @@ cc_library_static {
+         },
+     },
+     shared_libs: [
++	"android.hardware.weaver-V2-ndk",
++	"libbinder_ndk",
+         "android.hardware.confirmationui@1.0",
+         "lib_android_keymaster_keymint_utils",
+         "android.hardware.gatekeeper-V1-ndk",
+diff --git a/Decrypt.cpp b/Decrypt.cpp
+index 81799dd..c628566 100755
+--- a/Decrypt.cpp
++++ b/Decrypt.cpp
+@@ -28,7 +28,7 @@
+ #include <sys/types.h>
+ 
+ #include <keyutils.h>
+-#include "Weaver1.h"
++#include "Weaver.h"
+ #include "cutils/properties.h"
+ 
+ #include <openssl/sha.h>
+@@ -290,7 +290,7 @@ struct password_data_struct {
+ bool Get_Spblob_Data(const std::string& spblob_path, const std::string& handle_str, const std::string& suffix, const std::string& tag, std::string *data) {
+ 	bool found_file = false;
+ 	std::string file = spblob_path + handle_str + suffix;
+-	if (android::vold::pathExists(file)) {
++	if (access(file.c_str(), F_OK) == 0) {
+ 		if (!android::base::ReadFileToString(file, data)) {
+ 			printf("Failed to read '%s'\n", file.c_str());
+ 		} else
+@@ -746,25 +746,22 @@ bool Decrypt_User_Synth_Pass(const userid_t user_id, const std::string& Password
+ 		// Now we start driving weaverVerify: https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r23/services/core/java/com/android/server/locksettings/SyntheticPasswordManager.java#343
+ 		// Called from https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r23/services/core/java/com/android/server/locksettings/SyntheticPasswordManager.java#776
+ 		android::vold::Weaver weaver;
+-		if (!weaver) {
++		if (!android::vold::Weaver::isSupported()) {
+ 			printf("Failed to get weaver service\n");
+ 			return Free_Return(retval, weaver_key, &pwd);
+ 		}
+ 		// Get the key size from weaver service
+ 		uint32_t weaver_key_size = 0;
+-		if (!weaver.GetKeySize(&weaver_key_size)) {
+-			printf("Failed to get weaver key size\n");
+-			return Free_Return(retval, weaver_key, &pwd);
+-		} else {
+-			printf("weaver key size is %u\n", weaver_key_size);
+-		}
++		weaver_key_size = 16;
++		printf("weaver key size is %u (hardcoded for AIDL)\n", weaver_key_size);
+ 		// printf("weaver key: "); output_hex((unsigned char*)weaver_key, weaver_key_size); printf("\n");
+ 		// Send the slot from the .weaver file, the computed weaver key, and get the escrowed key data
+ 		std::vector<uint8_t> weaver_payload;
+ 		// TODO: we should return more information about the status including time delays before the next retry
+-		if (!weaver.WeaverVerify(wd.slot, weaver_key, &weaver_payload)) {
+-			printf("failed to weaver verify\n");
+-			return Free_Return(retval, weaver_key, &pwd);
++		std::vector<uint8_t> vec_weaver_key(static_cast<uint8_t*>(weaver_key), static_cast<uint8_t*>(weaver_key) + weaver_key_size);
++		if (!android::vold::Weaver::read(wd.slot, vec_weaver_key, &weaver_payload)) {
++	        printf("failed to weaver verify\n");
++	        return Free_Return(retval, weaver_key, &pwd);
+ 		}
+ 		// printf("weaver payload: "); output_hex(&weaver_payload); printf("\n");
+ 		// Done with weaverVerify
+diff --git a/Weaver.cpp b/Weaver.cpp
+new file mode 100644
+index 0000000..42d53c9
+--- /dev/null
++++ b/Weaver.cpp
+@@ -0,0 +1,53 @@
++#include "Weaver.h"
++#include <android-base/logging.h>
++#include <android/binder_manager.h>
++#include <aidl/android/hardware/weaver/IWeaver.h>
++
++using aidl::android::hardware::weaver::IWeaver;
++
++namespace android {
++namespace vold {
++
++bool Weaver::isSupported() {
++    std::string instance = std::string(IWeaver::descriptor) + "/default";
++    return AServiceManager_isDeclared(instance.c_str());
++}
++
++bool Weaver::read(uint32_t slot, const std::vector<uint8_t>& key, std::vector<uint8_t>* value) {
++    std::string instance = std::string(IWeaver::descriptor) + "/default";
++    auto binder = ndk::SpAIBinder(AServiceManager_waitForService(instance.c_str()));
++    auto service = IWeaver::fromBinder(binder);
++
++    if (!service) {
++        LOG(ERROR) << "zorn: Failed to find Weaver AIDL service";
++        return false;
++    }
++
++    aidl::android::hardware::weaver::WeaverReadResponse response;
++    auto status = service->read(slot, key, &response);
++
++    if (!status.isOk()) {
++        LOG(ERROR) << "zorn: Weaver read failed";
++        return false;
++    }
++
++    if (response.status == aidl::android::hardware::weaver::WeaverReadStatus::OK) {
++        *value = response.value;
++        return true;
++    }
++    
++    return false;
++}
++
++bool Weaver::write(uint32_t slot, const std::vector<uint8_t>& key, const std::vector<uint8_t>& value) {
++    std::string instance = std::string(IWeaver::descriptor) + "/default";
++    auto binder = ndk::SpAIBinder(AServiceManager_waitForService(instance.c_str()));
++    auto service = IWeaver::fromBinder(binder);
++
++    if (!service) return false;
++    auto status = service->write(slot, key, value);
++    return status.isOk();
++}
++
++}  // namespace vold
++}  // namespace android
+diff --git a/Weaver.h b/Weaver.h
+new file mode 100644
+index 0000000..2924291
+--- /dev/null
++++ b/Weaver.h
+@@ -0,0 +1,16 @@
++#pragma once
++#include <utils/StrongPointer.h>
++#include <vector>
++
++namespace android {
++namespace vold {
++
++class Weaver {
++public:
++    static bool isSupported();
++    static bool read(uint32_t slot, const std::vector<uint8_t>& key, std::vector<uint8_t>* value);
++    static bool write(uint32_t slot, const std::vector<uint8_t>& key, const std::vector<uint8_t>& value);
++};
++
++}  // namespace vold
++}  // namespace android
+diff --git a/Weaver1.cpp b/Weaver1.cpp
+deleted file mode 100644
+index ea357ed..0000000
+--- a/Weaver1.cpp
++++ /dev/null
+@@ -1,128 +0,0 @@
+-/*
+- * Copyright (C) 2017 Team Win Recovery Project
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-/* To the best of my knowledge there is no native implementation for
+- * Weaver so I made this by looking at the IWeaver.h file that gets
+- * compiled by the build system. I took the information from this header
+- * file and looked at keymaster source to get an idea of the proper way
+- * to write the functions.
+- */
+-
+-#include "Weaver1.h"
+-
+-//#include <android-base/logging.h>
+-//#include <keystore/keymaster_tags.h>
+-//#include <keystore/authorization_set.h>
+-//#include <keystore/keystore_hidl_support.h>
+-
+-#include <android/hardware/weaver/1.0/IWeaver.h>
+-
+-#include <iostream>
+-#define ERROR 1
+-#define LOG(x) std::cout
+-
+-using namespace android::hardware::weaver;
+-using android::hardware::hidl_string;
+-using ::android::hardware::weaver::V1_0::IWeaver;
+-using ::android::hardware::weaver::V1_0::WeaverConfig;
+-using ::android::hardware::weaver::V1_0::WeaverReadStatus;
+-using ::android::hardware::weaver::V1_0::WeaverReadResponse;
+-using ::android::hardware::weaver::V1_0::WeaverStatus;
+-using ::android::hardware::Return;
+-using ::android::sp;
+-
+-namespace android {
+-namespace vold {
+-
+-Weaver::Weaver() {
+-	mDevice = ::android::hardware::weaver::V1_0::IWeaver::getService();
+-	GottenConfig = false;
+-}
+-
+-bool Weaver::GetConfig() {
+-	if (GottenConfig)
+-		return true;
+-
+-	WeaverStatus status;
+-	WeaverConfig cfg;
+-
+-	bool callbackCalled = false;
+-	auto ret = mDevice->getConfig([&](WeaverStatus s, WeaverConfig c) {
+-		callbackCalled = true;
+-		status = s;
+-		cfg = c;
+-	});
+-	if (ret.isOk() && callbackCalled && status == WeaverStatus::OK) {
+-		config = cfg;
+-		GottenConfig = true;
+-		return true;
+-	}
+-	return false;
+-}
+-
+-bool Weaver::GetSlots(uint32_t* slots) {
+-	if (!GetConfig())
+-		return false;
+-	*slots = config.slots;
+-	return true;
+-}
+-
+-bool Weaver::GetKeySize(uint32_t* keySize) {
+-	if (!GetConfig())
+-		return false;
+-	*keySize = config.keySize;
+-	return true;
+-}
+-
+-bool Weaver::GetValueSize(uint32_t* valueSize) {
+-	if (!GetConfig())
+-		return false;
+-	*valueSize = config.valueSize;
+-	return true;
+-}
+-
+-// TODO: we should return more information about the status including time delays before the next retry
+-bool Weaver::WeaverVerify(const uint32_t slot, const void* weaver_key, std::vector<uint8_t>* payload) {
+-	bool callbackCalled = false;
+-	WeaverReadStatus status;
+-	std::vector<uint8_t> readValue;
+-	uint32_t timeout;
+-	uint32_t keySize;
+-	if (!GetKeySize(&keySize))
+-		return false;
+-	std::vector<uint8_t> key;
+-	key.resize(keySize);
+-	uint32_t index = 0;
+-	unsigned char* ptr = (unsigned char*)weaver_key;
+-	for (index = 0; index < keySize; index++) {
+-		key[index] = *ptr;
+-		ptr++;
+-	}
+-	const auto readRet = mDevice->read(slot, key, [&](WeaverReadStatus s, WeaverReadResponse r) {
+-		callbackCalled = true;
+-		status = s;
+-		readValue = r.value;
+-		timeout = r.timeout;
+-	});
+-	if (readRet.isOk() && callbackCalled && status == WeaverReadStatus::OK && timeout == 0) {
+-		*payload = readValue;
+-		return true;
+-	}
+-	return false;
+-}
+-
+-}  // namespace vold
+-}  // namespace android
+diff --git a/Weaver1.h b/Weaver1.h
+deleted file mode 100644
+index 22f401e..0000000
+--- a/Weaver1.h
++++ /dev/null
+@@ -1,64 +0,0 @@
+-/*
+- * Copyright (C) 2017 Team Win Recovery Project
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-/* To the best of my knowledge there is no native implementation for
+- * Weaver so I made this by looking at the IWeaver.h file that gets
+- * compiled by the build system. I took the information from this header
+- * file and looked at keymaster source to get an idea of the proper way
+- * to write the functions.
+- */
+-
+-#ifndef TWRP_WEAVER_H
+-#define TWRP_WEAVER_H
+-
+-#include <memory>
+-#include <string>
+-#include <utility>
+-
+-#include <android/hardware/weaver/1.0/IWeaver.h>
+-#include "Utils.h"
+-
+-namespace android {
+-namespace vold {
+-using ::android::hardware::weaver::V1_0::IWeaver;
+-
+-// Wrapper for a Weaver device
+-class Weaver {
+-	public:
+-		Weaver();
+-		// false if we failed to open the weaver device.
+-		explicit operator bool() { return mDevice.get() != nullptr; }
+-
+-		bool GetSlots(uint32_t* slots);
+-		bool GetKeySize(uint32_t* keySize);
+-		bool GetValueSize(uint32_t* valueSize);
+-		// TODO: we should return more information about the status including time delays before the next retry
+-		bool WeaverVerify(const uint32_t slot, const void* weaver_key, std::vector<uint8_t>* payload);
+-
+-	private:
+-		sp<hardware::weaver::V1_0::IWeaver> mDevice;
+-		hardware::weaver::V1_0::WeaverConfig config;
+-		bool GottenConfig;
+-
+-		bool GetConfig();
+-
+-		DISALLOW_COPY_AND_ASSIGN(Weaver);
+-};
+-
+-}  // namespace vold
+-}  // namespace android
+-
+-#endif

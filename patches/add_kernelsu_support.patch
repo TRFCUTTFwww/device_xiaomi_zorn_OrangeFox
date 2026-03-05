@@ -1,0 +1,25 @@
+diff --git a/FoxExtras/sbin/foxstart.sh b/FoxExtras/sbin/foxstart.sh
+index 506fb19..f081588 100755
+--- a/FoxExtras/sbin/foxstart.sh
++++ b/FoxExtras/sbin/foxstart.sh
+@@ -580,6 +580,12 @@ post_init() {
+   fi
+ }
+ 
++# KernelSU Fake Magisk Path for MMGUI
++if [ -d "/data/adb/ksu" ] && [ ! -d "/data/adb/magisk" ]; then
++    mkdir -p /data/adb/magisk
++    touch /data/adb/magisk/util_functions.sh
++fi
++
+ ### main() ###
+ extralog "foxstart: about to start"
+ 
+diff --git a/orangefox.mk b/orangefox.mk
+new file mode 120000
+index 0000000..df9c483
+--- /dev/null
++++ b/orangefox.mk
+@@ -0,0 +1 @@
++/zorn/fox_14.1/bootable/recovery/orangefox.mk
+\ No newline at end of file
