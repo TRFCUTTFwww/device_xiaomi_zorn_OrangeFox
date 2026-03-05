@@ -10,7 +10,7 @@
   
 - **KernelSU 桥接：** 集成了 `foxstart.sh` 引导脚本。该设计允许用户在 Recovery 环境下，通过 Magisk Manager 的逻辑层对 KernelSU 模块进行挂载与卸载管理，实现了两种 Root 方案的兼容性互补。
   
-- **环境验证：** 目前已在 HyperOS 3.9.0 稳定版环境下通过功能性验证，包括分区备份、Data 挂载及脚本执行。
+- **环境验证：** 目前已在 HyperOS 3.0.9 稳定版环境下通过功能性验证，包括分区备份、Data 挂载及脚本执行。
   
 
 ### 源码编译指引
@@ -52,7 +52,7 @@ This repository provides the OrangeFox Recovery 14.1 adaptation for the Redmi K8
   
 - **KernelSU Integration:** The inclusion of the `foxstart.sh` script facilitates the management of KernelSU modules via the Magisk Manager interface within the recovery environment, bridging the functional gap between disparate root solutions.
   
-- **Verification:** This build has been successfully validated on HyperOS 3.9.0. Standard operations, including partition backup and data decryption, are functional under controlled testing conditions.
+- **Verification:** This build has been successfully validated on HyperOS 3.0.9. Standard operations, including partition backup and data decryption, are functional under controlled testing conditions.
   
 
 ### Build Requirements
