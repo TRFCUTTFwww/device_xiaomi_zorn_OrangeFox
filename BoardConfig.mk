@@ -201,6 +201,20 @@ TW_CUSTOM_CPU_TEMP_PATH := "/sys/class/thermal/thermal_zone25/temp" # CPU-0-0-0
 TW_BACKUP_EXCLUSIONS := /data/fonts,/data/adb/ap,/data/adb/ksu
 TW_DEVICE_VERSION := $(TW_RELEASE_PRODUCT_NAME)-A15
 
+# --------------------
+# Display & Graphics (Fix negative height segfault)
+# --------------------
+TARGET_SCREEN_WIDTH := 1440
+TARGET_SCREEN_HEIGHT := 3200
+OF_SCREEN_H := 3200
+OF_SCREEN_W := 1440
+
+# 强行接管刘海屏计算，修复 h: -99 崩溃
+OF_HIDE_NOTCH := 1
+OF_STATUS_H := 100
+OF_STATUS_INDENT_LEFT := 48
+OF_STATUS_INDENT_RIGHT := 48
+
 # --- OrangeFox Specific ---
 FOX_BUILD_TYPE := Unofficial
 OF_MAINTAINER := Shirasu Azusa
